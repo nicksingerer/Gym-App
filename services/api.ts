@@ -12,7 +12,7 @@ import {
   CreateSetRequest,
 } from '@/types/api';
 
-const BASE_URL = (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000')
+const BASE_URL = (process.env.EXPO_PUBLIC_API_URL || 'https://gym-api-umber.vercel.app')
   .replace(/^["']|["']$/g, '')
   .replace(/\/$/, '');
 
