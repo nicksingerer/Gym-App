@@ -97,7 +97,7 @@ export function SetInputScreen({
                 style={({ pressed }) => [styles.stepperBtn, pressed && styles.stepperBtnPressed]}
                 onPress={() => adjustWeight(-2.5)}
               >
-                <Minus size={16} color={colors.textSecondary} />
+                <Minus size={20} color={colors.text} strokeWidth={2.5} />
               </Pressable>
               <View style={styles.inputWrap}>
                 <TextInput
@@ -118,7 +118,7 @@ export function SetInputScreen({
                 style={({ pressed }) => [styles.stepperBtn, pressed && styles.stepperBtnPressed]}
                 onPress={() => adjustWeight(2.5)}
               >
-                <Plus size={16} color={colors.textSecondary} />
+                <Plus size={20} color={colors.text} strokeWidth={2.5} />
               </Pressable>
             </View>
           </View>
@@ -132,7 +132,7 @@ export function SetInputScreen({
                 style={({ pressed }) => [styles.stepperBtn, pressed && styles.stepperBtnPressed]}
                 onPress={() => adjustReps(-1)}
               >
-                <Minus size={16} color={colors.textSecondary} />
+                <Minus size={20} color={colors.text} strokeWidth={2.5} />
               </Pressable>
               <View style={styles.inputWrap}>
                 <TextInput
@@ -152,7 +152,7 @@ export function SetInputScreen({
                 style={({ pressed }) => [styles.stepperBtn, pressed && styles.stepperBtnPressed]}
                 onPress={() => adjustReps(1)}
               >
-                <Plus size={16} color={colors.textSecondary} />
+                <Plus size={20} color={colors.text} strokeWidth={2.5} />
               </Pressable>
             </View>
           </View>
@@ -261,8 +261,8 @@ const styles = StyleSheet.create({
   inputDivider: {
     width: 1,
     backgroundColor: colors.border,
-    height: 80,
-    marginHorizontal: 16,
+    height: 90,
+    marginHorizontal: 20,
   },
   inputLabel: {
     fontSize: 12,
@@ -275,12 +275,12 @@ const styles = StyleSheet.create({
   stepperRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   stepperBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: radii.md,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.borderLight,
@@ -295,14 +295,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   numericInput: {
-    width: 80,
-    height: 52,
+    width: 90,
+    height: 56,
     backgroundColor: colors.bg,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.borderLight,
     textAlign: 'center',
-    fontSize: 28,
+    fontSize: 30,
     fontFamily: 'Inter-ExtraBold',
     color: colors.text,
     ...(Platform.OS === 'web' ? { outlineStyle: 'none' as any } : {}),
