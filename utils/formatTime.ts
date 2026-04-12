@@ -35,6 +35,10 @@ export function formatDaysSinceLastDone(days: number | null): string | null {
   return `vor ${months} Monaten`;
 }
 
+export function formatRelativeTime(isoString: string): string {
+  return formatTime(isoString);
+}
+
 export function formatTime(isoString: string): string {
   const date = new Date(isoString);
   const now = new Date();

@@ -21,9 +21,10 @@ import { HistoryEntry, HistorySet, TrainingSession, Exercise } from '@/types/api
 import { SetInputScreen } from '@/components/workout/SetInputScreen';
 import { RpeScreen } from '@/components/workout/RpeScreen';
 import { TimerScreen } from '@/components/workout/TimerScreen';
+import { SummaryScreen } from '@/components/workout/SummaryScreen';
 import { colors, radii } from '@/constants/theme';
 
-type WorkoutScreen = 'input' | 'rpe' | 'timer';
+type WorkoutScreen = 'input' | 'rpe' | 'timer' | 'summary';
 
 export default function WorkoutSessionScreen() {
   const params = useLocalSearchParams();
@@ -97,6 +98,14 @@ export default function WorkoutSessionScreen() {
   }, []);
 
   const handleFinish = useCallback(() => {
+    if (completedSets.length > 0) {
+      setScreen('summary');
+    } else {
+      router.replace('/');
+    }
+  }, [router, completedSets]);
+
+  const handleSummaryDone = useCallback(() => {
     router.replace('/');
   }, [router]);
 
@@ -145,9 +154,16 @@ export default function WorkoutSessionScreen() {
           <Text style={styles.headerTitle} numberOfLines={1}>
             {exercise?.name || 'Training'}
           </Text>
-          <Text style={styles.headerSubtitle}>
-            Satz {completedSets.length + (screen === 'timer' ? 0 : 1)}
-          </Text>
+          {screen !== 'summary' && (
+            <Text style={styles.headerSubtitle}>
+              Satz {completedSets.length + (screen === 'timer' ? 0 : 1)}
+            </Text>
+          )}
+          {screen === 'summary' && (
+            <Text style={styles.headerSubtitle}>
+              {completedSets.length} {completedSets.length === 1 ? 'Satz' : 'Satze'}
+            </Text>
+          )}
         </View>
         <View style={{ width: 40 }} />
       </View>
@@ -201,6 +217,21 @@ export default function WorkoutSessionScreen() {
               completedSets={completedSets}
               onNewSet={handleNewSet}
               onFinish={handleFinish}
+            />
+          </Animated.View>
+        )}
+
+        {screen === 'summary' && (
+          <Animated.View
+            key="summary"
+            entering={SlideInRight.duration(350)}
+            style={styles.screenWrap}
+          >
+            <SummaryScreen
+              exerciseName={exercise?.name || ''}
+              completedSets={completedSets}
+              lastSession={lastSession}
+              onDone={handleSummaryDone}
             />
           </Animated.View>
         )}
