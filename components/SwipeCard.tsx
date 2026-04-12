@@ -17,59 +17,46 @@ import Animated, {
   Extrapolation,
 } from 'react-native-reanimated';
 import { Exercise } from '@/types/api';
-import { Zap, Clock, ArrowUp, ArrowDown, Dumbbell } from 'lucide-react-native';
+import { Zap, Clock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { colors, muscleColors, radii } from '@/constants/theme';
 import { formatDaysSinceLastDone } from '@/utils/formatTime';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const CARD_WIDTH = Math.min(SCREEN_WIDTH - 32, 460);
-const CARD_HEIGHT = Math.min(SCREEN_HEIGHT * 0.62, 540);
 const SWIPE_Y_THRESHOLD = SCREEN_HEIGHT * 0.12;
+const SWIPE_X_THRESHOLD = SCREEN_WIDTH * 0.25;
 
-const SNAP_SPRING = { damping: 26, stiffness: 500, mass: 0.45 };
+const SNAP_SPRING = {
+  damping: 28,
+  stiffness: 600,
+  mass: 0.4,
+};
 
 interface SwipeCardProps {
   exercise: Exercise;
   onSwipeUp: () => void;
   onSwipeDown: () => void;
+  onSwipeLeft?: () => void;
+  onSwipeRight?: () => void;
+  showCycleControls: boolean;
   isTop: boolean;
   index: number;
 }
-
-function ImpactBar({ value }: { value: number }) {
-  return (
-    <View style={barStyles.track}>
-      <View style={[barStyles.fill, { width: `${value * 100}%` as any }]} />
-    </View>
-  );
-}
-
-const barStyles = StyleSheet.create({
-  track: {
-    flex: 1,
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  fill: {
-    height: '100%',
-    backgroundColor: colors.accent,
-    borderRadius: 2,
-  },
-});
 
 export function SwipeCard({
   exercise,
   onSwipeUp,
   onSwipeDown,
+  onSwipeLeft,
+  onSwipeRight,
+  showCycleControls,
   isTop,
   index,
 }: SwipeCardProps) {
-  const scaleForIndex = index === 0 ? 1 : 0.94;
-  const translateYForIndex = index === 0 ? 0 : 16;
-  const opacityForIndex = index === 0 ? 1 : 0.45;
+  const scaleForIndex = index === 0 ? 1 : 0.95;
+  const translateYForIndex = index === 0 ? 0 : 14;
+  const opacityForIndex = index === 0 ? 1 : 0.5;
 
+  const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const cardScale = useSharedValue(scaleForIndex);
   const stackOffset = useSharedValue(translateYForIndex);
@@ -84,18 +71,25 @@ export function SwipeCard({
 
   const handleSwipeUp = useCallback(() => onSwipeUp(), [onSwipeUp]);
   const handleSwipeDown = useCallback(() => onSwipeDown(), [onSwipeDown]);
+  const handleSwipeLeft = useCallback(() => onSwipeLeft?.(), [onSwipeLeft]);
+  const handleSwipeRight = useCallback(() => onSwipeRight?.(), [onSwipeRight]);
 
   const panGesture = Gesture.Pan()
     .enabled(isTop)
     .minDistance(5)
     .onStart(() => {
-      pressed.value = withSpring(0.97, { damping: 20, stiffness: 600 });
+      pressed.value = withSpring(0.98, { damping: 20, stiffness: 600 });
     })
     .onUpdate((event) => {
       const absX = Math.abs(event.translationX);
       const absY = Math.abs(event.translationY);
+
       if (absY > absX) {
-        translateY.value = event.translationY * 0.82;
+        translateY.value = event.translationY * 0.85;
+        translateX.value = 0;
+      } else if (showCycleControls) {
+        translateX.value = event.translationX * 0.6;
+        translateY.value = 0;
       }
     })
     .onEnd((event) => {
@@ -103,119 +97,198 @@ export function SwipeCard({
 
       const absX = Math.abs(event.translationX);
       const absY = Math.abs(event.translationY);
+      const velX = Math.abs(event.velocityX);
       const velY = Math.abs(event.velocityY);
 
       if (absY > absX) {
         if (event.translationY < -SWIPE_Y_THRESHOLD || (event.translationY < -40 && velY > 800)) {
-          translateY.value = withTiming(-SCREEN_HEIGHT, { duration: 260 }, () => {
+          translateY.value = withTiming(-SCREEN_HEIGHT, { duration: 250 }, () => {
             runOnJS(handleSwipeUp)();
           });
         } else if (event.translationY > SWIPE_Y_THRESHOLD || (event.translationY > 40 && velY > 800)) {
-          translateY.value = withTiming(SCREEN_HEIGHT, { duration: 260 }, () => {
+          translateY.value = withTiming(SCREEN_HEIGHT, { duration: 250 }, () => {
             runOnJS(handleSwipeDown)();
           });
         } else {
           translateY.value = withSpring(0, SNAP_SPRING);
         }
-      } else {
-        translateY.value = withSpring(0, SNAP_SPRING);
+      } else if (showCycleControls) {
+        if (event.translationX < -SWIPE_X_THRESHOLD || (event.translationX < -60 && velX > 600)) {
+          runOnJS(handleSwipeLeft)();
+          translateX.value = withSpring(0, SNAP_SPRING);
+        } else if (event.translationX > SWIPE_X_THRESHOLD || (event.translationX > 60 && velX > 600)) {
+          runOnJS(handleSwipeRight)();
+          translateX.value = withSpring(0, SNAP_SPRING);
+        } else {
+          translateX.value = withSpring(0, SNAP_SPRING);
+        }
       }
     });
 
   const animatedCardStyle = useAnimatedStyle(() => {
-    const rotate = interpolate(
+    const rotateY = interpolate(
       translateY.value,
       [-SCREEN_HEIGHT * 0.3, 0, SCREEN_HEIGHT * 0.3],
-      [-2.5, 0, 2.5],
+      [-2, 0, 2],
       Extrapolation.CLAMP
     );
     return {
       opacity: cardOpacity.value,
       transform: [
+        { translateX: translateX.value },
         { translateY: translateY.value + stackOffset.value },
-        { rotate: `${rotate}deg` },
+        { rotate: `${rotateY}deg` },
         { scale: cardScale.value * pressed.value },
       ],
     };
   });
 
-  const upOverlayOpacity = useAnimatedStyle(() => ({
-    opacity: interpolate(translateY.value, [-SWIPE_Y_THRESHOLD, -30], [1, 0], Extrapolation.CLAMP),
-  }));
+  const upOverlayStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      translateY.value,
+      [-SWIPE_Y_THRESHOLD, -25],
+      [1, 0],
+      Extrapolation.CLAMP
+    );
+    return { opacity };
+  });
 
-  const downOverlayOpacity = useAnimatedStyle(() => ({
-    opacity: interpolate(translateY.value, [30, SWIPE_Y_THRESHOLD], [0, 1], Extrapolation.CLAMP),
-  }));
+  const downOverlayStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      translateY.value,
+      [25, SWIPE_Y_THRESHOLD],
+      [0, 1],
+      Extrapolation.CLAMP
+    );
+    return { opacity };
+  });
 
-  const primaryMuscles = exercise.muscles.filter((m) => m.impact >= 0.7);
-  const secondaryMuscles = exercise.muscles.filter((m) => m.impact < 0.7 && m.impact >= 0.3);
-  const topMuscles = [...primaryMuscles, ...secondaryMuscles].slice(0, 5);
+  const leftOverlayStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      translateX.value,
+      [-SWIPE_X_THRESHOLD, -40],
+      [1, 0],
+      Extrapolation.CLAMP
+    );
+    return { opacity };
+  });
+
+  const rightOverlayStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      translateX.value,
+      [40, SWIPE_X_THRESHOLD],
+      [0, 1],
+      Extrapolation.CLAMP
+    );
+    return { opacity };
+  });
+
+  const primaryMuscles = exercise.muscles
+    .filter((m) => m.impact >= 0.7)
+    .map((m) => m.muscle.name);
+  const secondaryMuscles = exercise.muscles
+    .filter((m) => m.impact < 0.7 && m.impact >= 0.3)
+    .map((m) => m.muscle.name);
+  const allMuscles = [...primaryMuscles, ...secondaryMuscles];
   const lastDoneText = formatDaysSinceLastDone(exercise.daysSinceLastDone ?? null);
 
   return (
     <GestureDetector gesture={panGesture}>
-      <Animated.View style={[styles.card, animatedCardStyle, { zIndex: isTop ? 10 : 10 - index }]}>
+      <Animated.View
+        style={[
+          styles.card,
+          animatedCardStyle,
+          { zIndex: isTop ? 10 : 10 - index },
+        ]}
+      >
         <View style={styles.cardInner}>
-          <View style={styles.topBar}>
-            <View style={styles.iconWrap}>
-              <Dumbbell size={14} color={colors.accent} />
-            </View>
-            {lastDoneText && (
-              <View style={styles.lastDonePill}>
-                <Clock size={11} color={colors.textTertiary} />
+          {lastDoneText && (
+            <View style={styles.topRow}>
+              <View style={styles.lastDoneRow}>
+                <Clock size={12} color={colors.textTertiary} />
                 <Text style={styles.lastDoneText}>{lastDoneText}</Text>
               </View>
-            )}
-          </View>
+            </View>
+          )}
 
-          <View style={styles.mainContent}>
+          <View style={styles.centerSection}>
             <Text style={styles.exerciseName} numberOfLines={3}>
               {exercise.name}
             </Text>
             {exercise.description ? (
-              <Text style={styles.exerciseDescription} numberOfLines={2}>
+              <Text style={styles.exerciseDescription} numberOfLines={3}>
                 {exercise.description}
               </Text>
             ) : null}
           </View>
 
           <View style={styles.bottomSection}>
-            {topMuscles.length > 0 && (
-              <View style={styles.muscleList}>
-                {topMuscles.map((em, i) => {
-                  const mc = muscleColors[i % muscleColors.length];
-                  return (
-                    <View key={em.muscle.id} style={styles.muscleRow}>
-                      <View style={[styles.muscleDot, { backgroundColor: mc.text }]} />
-                      <Text style={[styles.muscleLabel, { color: mc.text }]} numberOfLines={1}>
-                        {em.muscle.name}
-                      </Text>
-                      <ImpactBar value={em.impact} />
-                      {em.impact >= 0.7 && (
-                        <Zap size={10} color={mc.text} fill={mc.text} />
-                      )}
-                    </View>
-                  );
-                })}
-                {exercise.muscles.length > 5 && (
-                  <Text style={styles.moreText}>+{exercise.muscles.length - 5} weitere</Text>
-                )}
-              </View>
-            )}
+            <View style={styles.muscleGrid}>
+              {allMuscles.slice(0, 6).map((muscle, i) => {
+                const mc = muscleColors[i % muscleColors.length];
+                const isPrimary = i < primaryMuscles.length;
+                return (
+                  <View
+                    key={muscle}
+                    style={[styles.muscleChip, { backgroundColor: mc.bg, borderColor: mc.border, borderWidth: 1 }]}
+                  >
+                    {isPrimary && <Zap size={11} color={mc.text} />}
+                    <Text style={[styles.muscleChipText, { color: mc.text }]}>
+                      {muscle}
+                    </Text>
+                  </View>
+                );
+              })}
+              {allMuscles.length > 6 && (
+                <View style={styles.muscleMore}>
+                  <Text style={styles.muscleMoreText}>+{allMuscles.length - 6}</Text>
+                </View>
+              )}
+            </View>
           </View>
         </View>
 
-        <Animated.View style={[styles.overlay, styles.overlayUp, upOverlayOpacity]} pointerEvents="none">
-          <View style={styles.overlayBadgeGreen}>
-            <ArrowUp size={36} color="#000" strokeWidth={2.5} />
+        <Animated.View
+          style={[styles.overlay, styles.overlayUp, upOverlayStyle]}
+          pointerEvents="none"
+        >
+          <View style={styles.overlayContent}>
+            <ChevronUp size={44} color="#FFF" strokeWidth={1.5} />
+            <Text style={styles.overlayText}>GO!</Text>
           </View>
         </Animated.View>
 
-        <Animated.View style={[styles.overlay, styles.overlayDown, downOverlayOpacity]} pointerEvents="none">
-          <View style={styles.overlayBadgeRed}>
-            <ArrowDown size={36} color="#fff" strokeWidth={2.5} />
+        <Animated.View
+          style={[styles.overlay, styles.overlayDown, downOverlayStyle]}
+          pointerEvents="none"
+        >
+          <View style={styles.overlayContent}>
+            <ChevronDown size={44} color="#FFF" strokeWidth={1.5} />
+            <Text style={styles.overlayText}>LATER</Text>
           </View>
         </Animated.View>
+
+        {showCycleControls && (
+          <>
+            <Animated.View
+              style={[styles.overlay, styles.overlayLeft, leftOverlayStyle]}
+              pointerEvents="none"
+            >
+              <View style={styles.overlayContent}>
+                <ChevronLeft size={44} color="#FFF" strokeWidth={1.5} />
+              </View>
+            </Animated.View>
+
+            <Animated.View
+              style={[styles.overlay, styles.overlayRight, rightOverlayStyle]}
+              pointerEvents="none"
+            >
+              <View style={styles.overlayContent}>
+                <ChevronRight size={44} color="#FFF" strokeWidth={1.5} />
+              </View>
+            </Animated.View>
+          </>
+        )}
       </Animated.View>
     </GestureDetector>
   );
@@ -224,72 +297,59 @@ export function SwipeCard({
 const styles = StyleSheet.create({
   card: {
     position: 'absolute',
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
+    width: SCREEN_WIDTH - 40,
+    maxWidth: 440,
+    alignSelf: 'center',
+    height: SCREEN_HEIGHT * 0.58,
+    maxHeight: 520,
     borderRadius: radii.xxl,
     backgroundColor: colors.card,
     overflow: 'visible',
     borderWidth: 1,
     borderColor: colors.border,
     ...(Platform.OS === 'web'
-      ? { boxShadow: '0 32px 80px rgba(0,0,0,0.7), 0 4px 16px rgba(0,0,0,0.4)' }
+      ? { boxShadow: '0 24px 80px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.3)' }
       : {
           shadowColor: '#000',
-          shadowOffset: { width: 0, height: 20 },
-          shadowOpacity: 0.65,
-          shadowRadius: 48,
-          elevation: 28,
+          shadowOffset: { width: 0, height: 24 },
+          shadowOpacity: 0.6,
+          shadowRadius: 40,
+          elevation: 24,
         }),
   },
   cardInner: {
     flex: 1,
     padding: 24,
-    borderRadius: radii.xxl,
+    justifyContent: 'space-between',
     overflow: 'hidden',
+    borderRadius: radii.xxl,
   },
-  topBar: {
+  topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 20,
+    justifyContent: 'flex-end',
   },
-  iconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: radii.sm,
-    backgroundColor: colors.accentMuted,
-    borderWidth: 1,
-    borderColor: colors.accentBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  lastDonePill: {
+  lastDoneRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   lastDoneText: {
     fontSize: 11,
     fontFamily: 'Inter-Medium',
     color: colors.textTertiary,
   },
-  mainContent: {
+  centerSection: {
     flex: 1,
     justifyContent: 'center',
-    paddingBottom: 12,
+    paddingVertical: 16,
   },
   exerciseName: {
-    fontSize: 32,
+    fontSize: 30,
     fontFamily: 'Inter-ExtraBold',
     color: colors.text,
-    letterSpacing: -1,
-    lineHeight: 38,
+    letterSpacing: -0.8,
+    lineHeight: 36,
     marginBottom: 10,
   },
   exerciseDescription: {
@@ -298,61 +358,63 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: 21,
   },
-  bottomSection: {},
-  muscleList: {
-    gap: 8,
+  bottomSection: {
+    gap: 12,
   },
-  muscleRow: {
+  muscleGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  muscleChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radii.sm,
   },
-  muscleDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    opacity: 0.8,
-  },
-  muscleLabel: {
+  muscleChipText: {
     fontSize: 12,
     fontFamily: 'Inter-SemiBold',
-    width: 110,
   },
-  moreText: {
-    fontSize: 11,
-    fontFamily: 'Inter-Medium',
-    color: colors.textMuted,
-    marginTop: 2,
-    marginLeft: 14,
+  muscleMore: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radii.sm,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  muscleMoreText: {
+    fontSize: 12,
+    fontFamily: 'Inter-SemiBold',
+    color: colors.textTertiary,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: radii.xxl,
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
   },
   overlayUp: {
-    backgroundColor: 'rgba(34, 197, 94, 0.9)',
+    backgroundColor: 'rgba(34, 197, 94, 0.92)',
   },
   overlayDown: {
-    backgroundColor: 'rgba(10, 10, 12, 0.92)',
-    borderWidth: 2,
-    borderColor: colors.danger,
+    backgroundColor: 'rgba(239, 68, 68, 0.92)',
   },
-  overlayBadgeGreen: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
+  overlayLeft: {
+    backgroundColor: 'rgba(59, 130, 246, 0.92)',
   },
-  overlayBadgeRed: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: colors.danger,
+  overlayRight: {
+    backgroundColor: 'rgba(59, 130, 246, 0.92)',
+  },
+  overlayContent: {
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 12,
+  },
+  overlayText: {
+    color: '#FFF',
+    fontSize: 28,
+    fontFamily: 'Inter-ExtraBold',
+    letterSpacing: 6,
   },
 });
