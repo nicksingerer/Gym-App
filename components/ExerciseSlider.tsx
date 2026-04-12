@@ -5,23 +5,17 @@ import {
   StyleSheet,
   Dimensions,
   ScrollView,
-  Pressable,
-  Platform,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  interpolate,
-  Extrapolation,
-} from 'react-native-reanimated';
 import { Exercise } from '@/types/api';
 import { colors, radii } from '@/constants/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = Math.min(SCREEN_WIDTH - 32, 460);
-const ITEM_WIDTH = 120;
+const ITEM_WIDTH = 140;
 const ITEM_GAP = 8;
+const SNAP_INTERVAL = ITEM_WIDTH + ITEM_GAP;
 
 interface ExerciseSliderProps {
   exercises: Exercise[];
@@ -29,93 +23,36 @@ interface ExerciseSliderProps {
   onSelect: (index: number) => void;
 }
 
-function SliderItem({
-  exercise,
-  isActive,
-  onPress,
-  position,
-  activeIndex,
-}: {
-  exercise: Exercise;
-  isActive: boolean;
-  onPress: () => void;
-  position: number;
-  activeIndex: number;
-}) {
-  const distance = Math.abs(position - activeIndex);
-  const scale = interpolate(distance, [0, 1, 2], [1, 0.93, 0.88], Extrapolation.CLAMP);
-  const opacity = interpolate(distance, [0, 1, 2], [1, 0.55, 0.3], Extrapolation.CLAMP);
-
-  return (
-    <Pressable onPress={onPress}>
-      {({ pressed: p }) => (
-        <View
-          style={[
-            sliderItemStyles.item,
-            isActive && sliderItemStyles.itemActive,
-            { transform: [{ scale: p ? 0.96 : scale }], opacity },
-          ]}
-        >
-          <Text style={[sliderItemStyles.name, isActive && sliderItemStyles.nameActive]} numberOfLines={2}>
-            {exercise.name}
-          </Text>
-          {isActive && <View style={sliderItemStyles.activeDot} />}
-        </View>
-      )}
-    </Pressable>
-  );
-}
-
-const sliderItemStyles = StyleSheet.create({
-  item: {
-    width: ITEM_WIDTH,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: radii.lg,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    justifyContent: 'space-between',
-    minHeight: 60,
-  },
-  itemActive: {
-    backgroundColor: colors.accentMuted,
-    borderColor: colors.accentBorder,
-  },
-  name: {
-    fontSize: 12,
-    fontFamily: 'Inter-SemiBold',
-    color: colors.textSecondary,
-    lineHeight: 16,
-  },
-  nameActive: {
-    color: colors.text,
-  },
-  activeDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: colors.accent,
-    marginTop: 6,
-  },
-});
-
 export function ExerciseSlider({ exercises, activeIndex, onSelect }: ExerciseSliderProps) {
   const scrollRef = useRef<ScrollView>(null);
-
-  const scrollToIndex = useCallback(
-    (index: number) => {
-      const totalWidth = exercises.length * (ITEM_WIDTH + ITEM_GAP) - ITEM_GAP;
-      const containerWidth = CARD_WIDTH - 32;
-      const offset = index * (ITEM_WIDTH + ITEM_GAP) - containerWidth / 2 + ITEM_WIDTH / 2;
-      scrollRef.current?.scrollTo({ x: Math.max(0, offset), animated: true });
-    },
-    [exercises.length]
-  );
+  const isScrollingRef = useRef(false);
 
   React.useEffect(() => {
-    scrollToIndex(activeIndex);
+    if (isScrollingRef.current) return;
+    const containerWidth = CARD_WIDTH - 32;
+    const offset = activeIndex * SNAP_INTERVAL - containerWidth / 2 + ITEM_WIDTH / 2;
+    scrollRef.current?.scrollTo({ x: Math.max(0, offset), animated: true });
   }, [activeIndex]);
+
+  const handleScrollEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      isScrollingRef.current = false;
+      const offsetX = e.nativeEvent.contentOffset.x;
+      const containerWidth = CARD_WIDTH - 32;
+      const adjustedOffset = offsetX + containerWidth / 2 - ITEM_WIDTH / 2;
+      const index = Math.round(adjustedOffset / SNAP_INTERVAL);
+      const clamped = Math.max(0, Math.min(exercises.length - 1, index));
+      onSelect(clamped);
+    },
+    [exercises.length, onSelect]
+  );
+
+  const handleScrollBegin = useCallback(() => {
+    isScrollingRef.current = true;
+  }, []);
+
+  const containerWidth = CARD_WIDTH - 32;
+  const sidePadding = containerWidth / 2 - ITEM_WIDTH / 2;
 
   return (
     <View style={styles.container}>
@@ -123,34 +60,44 @@ export function ExerciseSlider({ exercises, activeIndex, onSelect }: ExerciseSli
         ref={scrollRef}
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingHorizontal: sidePadding }]}
         decelerationRate="fast"
-        snapToInterval={ITEM_WIDTH + ITEM_GAP}
-        snapToAlignment="start"
+        snapToInterval={SNAP_INTERVAL}
+        snapToAlignment="center"
         scrollEventThrottle={16}
+        onScrollBeginDrag={handleScrollBegin}
+        onMomentumScrollEnd={handleScrollEnd}
+        onScrollEndDrag={handleScrollEnd}
       >
-        {exercises.map((ex, i) => (
-          <SliderItem
-            key={ex.id}
-            exercise={ex}
-            isActive={i === activeIndex}
-            position={i}
-            activeIndex={activeIndex}
-            onPress={() => onSelect(i)}
-          />
-        ))}
+        {exercises.map((ex, i) => {
+          const isActive = i === activeIndex;
+          return (
+            <View
+              key={ex.id}
+              style={[
+                styles.item,
+                isActive ? styles.itemActive : styles.itemInactive,
+                i < exercises.length - 1 && { marginRight: ITEM_GAP },
+              ]}
+            >
+              <Text
+                style={[styles.name, isActive ? styles.nameActive : styles.nameInactive]}
+                numberOfLines={2}
+              >
+                {ex.name}
+              </Text>
+              {isActive && <View style={styles.activeLine} />}
+            </View>
+          );
+        })}
       </ScrollView>
 
       <View style={styles.dotBar}>
         {exercises.map((_, i) => (
-          <Pressable key={i} onPress={() => onSelect(i)}>
-            <View
-              style={[
-                styles.dot,
-                i === activeIndex ? styles.dotActive : styles.dotInactive,
-              ]}
-            />
-          </Pressable>
+          <View
+            key={i}
+            style={[styles.dot, i === activeIndex ? styles.dotActive : styles.dotInactive]}
+          />
         ))}
       </View>
     </View>
@@ -160,31 +107,63 @@ export function ExerciseSlider({ exercises, activeIndex, onSelect }: ExerciseSli
 const styles = StyleSheet.create({
   container: {
     width: CARD_WIDTH,
-    gap: 10,
+    gap: 12,
   },
   scrollContent: {
-    paddingHorizontal: 16,
-    gap: ITEM_GAP,
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  item: {
+    width: ITEM_WIDTH,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    minHeight: 64,
+    justifyContent: 'space-between',
+  },
+  itemActive: {
+    backgroundColor: colors.accentMuted,
+    borderColor: colors.accentBorder,
+  },
+  itemInactive: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  name: {
+    fontSize: 12,
+    fontFamily: 'Inter-SemiBold',
+    lineHeight: 17,
+  },
+  nameActive: {
+    color: colors.text,
+  },
+  nameInactive: {
+    color: 'rgba(255,255,255,0.28)',
+  },
+  activeLine: {
+    width: 20,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: colors.accent,
+    marginTop: 8,
   },
   dotBar: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 6,
-    paddingBottom: 2,
+    gap: 5,
   },
   dot: {
-    height: 5,
-    borderRadius: 2.5,
+    height: 4,
+    borderRadius: 2,
   },
   dotActive: {
-    width: 18,
+    width: 16,
     backgroundColor: colors.accent,
   },
   dotInactive: {
-    width: 5,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    width: 4,
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
 });
