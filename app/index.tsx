@@ -5,21 +5,22 @@ import {
   StyleSheet,
   ActivityIndicator,
   Platform,
+  Pressable,
 } from 'react-native';
 import Animated, {
   FadeIn,
   FadeOut,
   SlideInDown,
   FadeInUp,
-  FadeOutUp,
   FadeOutDown,
+  FadeOutUp,
 } from 'react-native-reanimated';
-import { Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { api } from '@/services/api';
 import { ExerciseGroup, Exercise } from '@/types/api';
 import { SwipeCard } from '@/components/SwipeCard';
+import { ExerciseSlider } from '@/components/ExerciseSlider';
 import { ActionToast } from '@/components/ActionToast';
 import { Dumbbell, RefreshCw } from 'lucide-react-native';
 import { colors, radii } from '@/constants/theme';
@@ -64,7 +65,6 @@ export default function HomeScreen() {
 
   const fillBuffer = useCallback(async () => {
     if (bufferLoading || exhausted) return;
-
     setBufferLoading(true);
     try {
       const data = await api.getQueue(BUFFER_SIZE);
@@ -86,9 +86,7 @@ export default function HomeScreen() {
     setExhausted(false);
     try {
       const data = await api.getQueue(BUFFER_SIZE);
-      if (data.length === 0) {
-        setExhausted(true);
-      }
+      if (data.length === 0) setExhausted(true);
       setCards(flattenGroups(data));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Fehler beim Laden der Übungen');
@@ -97,16 +95,10 @@ export default function HomeScreen() {
     }
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      initialLoad();
-    }, [])
-  );
+  useFocusEffect(useCallback(() => { initialLoad(); }, []));
 
   useEffect(() => {
-    if (cards.length < 3 && !exhausted && !bufferLoading) {
-      fillBuffer();
-    }
+    if (cards.length < 3 && !exhausted && !bufferLoading) fillBuffer();
   }, [cards.length, exhausted, bufferLoading, fillBuffer]);
 
   const showToast = (type: 'snoozed' | 'started', exerciseName: string) => {
@@ -119,24 +111,11 @@ export default function HomeScreen() {
     setHeaderKey((k) => k + 1);
   };
 
-  const cycleExercise = (direction: 'prev' | 'next') => {
+  const selectExercise = (index: number) => {
     setCards((prev) =>
       prev.map((card, idx) => {
         if (idx !== 0) return card;
-        if (card.clusterSize <= 1) return card;
-
-        let nextIndex: number;
-        if (direction === 'next') {
-          nextIndex = (card.clusterIndex + 1) % card.clusterSize;
-        } else {
-          nextIndex = (card.clusterIndex - 1 + card.clusterSize) % card.clusterSize;
-        }
-
-        return {
-          ...card,
-          clusterIndex: nextIndex,
-          exercise: card.exercises[nextIndex],
-        };
+        return { ...card, clusterIndex: index, exercise: card.exercises[index] };
       })
     );
   };
@@ -184,9 +163,7 @@ export default function HomeScreen() {
               <Dumbbell size={32} color={colors.accent} />
             </View>
             <Text style={styles.doneTitle}>Alles erledigt!</Text>
-            <Text style={styles.doneText}>
-              Du hast alle verfügbaren Übungen durchgearbeitet.
-            </Text>
+            <Text style={styles.doneText}>Du hast alle verfügbaren Übungen durchgearbeitet.</Text>
           </Animated.View>
         </View>
       </View>
@@ -225,7 +202,6 @@ export default function HomeScreen() {
           const handleSwipeUp = () => {
             if (isSwiping.current) return;
             isSwiping.current = true;
-
             removeCard(card.key);
             showToast('started', card.exercise.name);
             router.push(`/exercise/${card.exercise.id}`);
@@ -235,10 +211,8 @@ export default function HomeScreen() {
           const handleSwipeDown = async () => {
             if (isSwiping.current) return;
             isSwiping.current = true;
-
             removeCard(card.key);
             showToast('snoozed', card.clusterName);
-
             try {
               await api.snoozeExercise({ exerciseId: card.exercise.id });
             } catch (err) {
@@ -248,23 +222,12 @@ export default function HomeScreen() {
             }
           };
 
-          const handleSwipeLeft = () => {
-            cycleExercise('prev');
-          };
-
-          const handleSwipeRight = () => {
-            cycleExercise('next');
-          };
-
           return (
             <SwipeCard
               key={card.key}
               exercise={card.exercise}
               onSwipeUp={handleSwipeUp}
               onSwipeDown={handleSwipeDown}
-              onSwipeLeft={handleSwipeLeft}
-              onSwipeRight={handleSwipeRight}
-              showCycleControls={card.clusterSize > 1}
               isTop={index === 0}
               index={index}
             />
@@ -281,22 +244,16 @@ export default function HomeScreen() {
 
       {topCard && topCard.clusterSize > 1 && (
         <Animated.View
-          key={`dots-${topCard.key}`}
+          key={`slider-${topCard.key}`}
           entering={FadeInUp.duration(300)}
           exiting={FadeOutDown.duration(150)}
-          style={styles.dotContainer}
+          style={styles.sliderContainer}
         >
-          <View style={styles.dotRow}>
-            {Array.from({ length: topCard.clusterSize }).map((_, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.dot,
-                  i === topCard.clusterIndex ? styles.dotActive : styles.dotInactive,
-                ]}
-              />
-            ))}
-          </View>
+          <ExerciseSlider
+            exercises={topCard.exercises}
+            activeIndex={topCard.clusterIndex}
+            onSelect={selectExercise}
+          />
         </Animated.View>
       )}
 
@@ -443,26 +400,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
   },
-  dotContainer: {
+  sliderContainer: {
     alignItems: 'center',
-    gap: 8,
-    paddingTop: 12,
-    paddingBottom: Platform.OS === 'web' ? 32 : 44,
-  },
-  dotRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  dotActive: {
-    backgroundColor: colors.accent,
-  },
-  dotInactive: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    paddingTop: 16,
+    paddingBottom: Platform.OS === 'web' ? 32 : 48,
   },
   bufferIndicator: {
     position: 'absolute',

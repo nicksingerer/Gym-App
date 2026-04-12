@@ -14,11 +14,10 @@ import Animated, {
   withTiming,
   runOnJS,
   interpolate,
-  interpolateColor,
   Extrapolation,
 } from 'react-native-reanimated';
 import { Exercise } from '@/types/api';
-import { Zap, Clock, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Dumbbell } from 'lucide-react-native';
+import { Zap, Clock, ArrowUp, ArrowDown, Dumbbell } from 'lucide-react-native';
 import { colors, muscleColors, radii } from '@/constants/theme';
 import { formatDaysSinceLastDone } from '@/utils/formatTime';
 
@@ -26,7 +25,6 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CARD_WIDTH = Math.min(SCREEN_WIDTH - 32, 460);
 const CARD_HEIGHT = Math.min(SCREEN_HEIGHT * 0.62, 540);
 const SWIPE_Y_THRESHOLD = SCREEN_HEIGHT * 0.12;
-const SWIPE_X_THRESHOLD = SCREEN_WIDTH * 0.22;
 
 const SNAP_SPRING = { damping: 26, stiffness: 500, mass: 0.45 };
 
@@ -34,9 +32,6 @@ interface SwipeCardProps {
   exercise: Exercise;
   onSwipeUp: () => void;
   onSwipeDown: () => void;
-  onSwipeLeft?: () => void;
-  onSwipeRight?: () => void;
-  showCycleControls: boolean;
   isTop: boolean;
   index: number;
 }
@@ -68,9 +63,6 @@ export function SwipeCard({
   exercise,
   onSwipeUp,
   onSwipeDown,
-  onSwipeLeft,
-  onSwipeRight,
-  showCycleControls,
   isTop,
   index,
 }: SwipeCardProps) {
@@ -78,7 +70,6 @@ export function SwipeCard({
   const translateYForIndex = index === 0 ? 0 : 16;
   const opacityForIndex = index === 0 ? 1 : 0.45;
 
-  const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const cardScale = useSharedValue(scaleForIndex);
   const stackOffset = useSharedValue(translateYForIndex);
@@ -93,8 +84,6 @@ export function SwipeCard({
 
   const handleSwipeUp = useCallback(() => onSwipeUp(), [onSwipeUp]);
   const handleSwipeDown = useCallback(() => onSwipeDown(), [onSwipeDown]);
-  const handleSwipeLeft = useCallback(() => onSwipeLeft?.(), [onSwipeLeft]);
-  const handleSwipeRight = useCallback(() => onSwipeRight?.(), [onSwipeRight]);
 
   const panGesture = Gesture.Pan()
     .enabled(isTop)
@@ -105,13 +94,8 @@ export function SwipeCard({
     .onUpdate((event) => {
       const absX = Math.abs(event.translationX);
       const absY = Math.abs(event.translationY);
-
       if (absY > absX) {
         translateY.value = event.translationY * 0.82;
-        translateX.value = 0;
-      } else if (showCycleControls) {
-        translateX.value = event.translationX * 0.55;
-        translateY.value = 0;
       }
     })
     .onEnd((event) => {
@@ -119,7 +103,6 @@ export function SwipeCard({
 
       const absX = Math.abs(event.translationX);
       const absY = Math.abs(event.translationY);
-      const velX = Math.abs(event.velocityX);
       const velY = Math.abs(event.velocityY);
 
       if (absY > absX) {
@@ -134,16 +117,8 @@ export function SwipeCard({
         } else {
           translateY.value = withSpring(0, SNAP_SPRING);
         }
-      } else if (showCycleControls) {
-        if (event.translationX < -SWIPE_X_THRESHOLD || (event.translationX < -60 && velX > 600)) {
-          runOnJS(handleSwipeLeft)();
-          translateX.value = withSpring(0, SNAP_SPRING);
-        } else if (event.translationX > SWIPE_X_THRESHOLD || (event.translationX > 60 && velX > 600)) {
-          runOnJS(handleSwipeRight)();
-          translateX.value = withSpring(0, SNAP_SPRING);
-        } else {
-          translateX.value = withSpring(0, SNAP_SPRING);
-        }
+      } else {
+        translateY.value = withSpring(0, SNAP_SPRING);
       }
     });
 
@@ -154,18 +129,11 @@ export function SwipeCard({
       [-2.5, 0, 2.5],
       Extrapolation.CLAMP
     );
-    const rotateX = interpolate(
-      translateX.value,
-      [-SCREEN_WIDTH * 0.3, 0, SCREEN_WIDTH * 0.3],
-      [1.5, 0, -1.5],
-      Extrapolation.CLAMP
-    );
     return {
       opacity: cardOpacity.value,
       transform: [
-        { translateX: translateX.value },
         { translateY: translateY.value + stackOffset.value },
-        { rotate: `${rotate + rotateX}deg` },
+        { rotate: `${rotate}deg` },
         { scale: cardScale.value * pressed.value },
       ],
     };
@@ -179,14 +147,6 @@ export function SwipeCard({
     opacity: interpolate(translateY.value, [30, SWIPE_Y_THRESHOLD], [0, 1], Extrapolation.CLAMP),
   }));
 
-  const leftOverlayOpacity = useAnimatedStyle(() => ({
-    opacity: interpolate(translateX.value, [-SWIPE_X_THRESHOLD, -40], [1, 0], Extrapolation.CLAMP),
-  }));
-
-  const rightOverlayOpacity = useAnimatedStyle(() => ({
-    opacity: interpolate(translateX.value, [40, SWIPE_X_THRESHOLD], [0, 1], Extrapolation.CLAMP),
-  }));
-
   const primaryMuscles = exercise.muscles.filter((m) => m.impact >= 0.7);
   const secondaryMuscles = exercise.muscles.filter((m) => m.impact < 0.7 && m.impact >= 0.3);
   const topMuscles = [...primaryMuscles, ...secondaryMuscles].slice(0, 5);
@@ -194,19 +154,11 @@ export function SwipeCard({
 
   return (
     <GestureDetector gesture={panGesture}>
-      <Animated.View
-        style={[
-          styles.card,
-          animatedCardStyle,
-          { zIndex: isTop ? 10 : 10 - index },
-        ]}
-      >
+      <Animated.View style={[styles.card, animatedCardStyle, { zIndex: isTop ? 10 : 10 - index }]}>
         <View style={styles.cardInner}>
           <View style={styles.topBar}>
-            <View style={styles.topBarLeft}>
-              <View style={styles.iconWrap}>
-                <Dumbbell size={14} color={colors.accent} />
-              </View>
+            <View style={styles.iconWrap}>
+              <Dumbbell size={14} color={colors.accent} />
             </View>
             {lastDoneText && (
               <View style={styles.lastDonePill}>
@@ -250,71 +202,20 @@ export function SwipeCard({
                 )}
               </View>
             )}
-
-            <View style={styles.swipeHints}>
-              {showCycleControls ? (
-                <View style={styles.hintRow}>
-                  <View style={styles.hintItem}>
-                    <ChevronLeft size={12} color={colors.textMuted} strokeWidth={2.5} />
-                    <ChevronRight size={12} color={colors.textMuted} strokeWidth={2.5} />
-                    <Text style={styles.hintText}>wechseln</Text>
-                  </View>
-                  <View style={styles.hintDot} />
-                  <View style={styles.hintItem}>
-                    <ArrowUp size={12} color={colors.accent} strokeWidth={2.5} />
-                    <Text style={[styles.hintText, { color: colors.accent }]}>starten</Text>
-                  </View>
-                  <View style={styles.hintDot} />
-                  <View style={styles.hintItem}>
-                    <ArrowDown size={12} color={colors.danger} strokeWidth={2.5} />
-                    <Text style={[styles.hintText, { color: colors.danger }]}>snooze</Text>
-                  </View>
-                </View>
-              ) : (
-                <View style={styles.hintRow}>
-                  <View style={styles.hintItem}>
-                    <ArrowUp size={12} color={colors.accent} strokeWidth={2.5} />
-                    <Text style={[styles.hintText, { color: colors.accent }]}>starten</Text>
-                  </View>
-                  <View style={styles.hintDot} />
-                  <View style={styles.hintItem}>
-                    <ArrowDown size={12} color={colors.danger} strokeWidth={2.5} />
-                    <Text style={[styles.hintText, { color: colors.danger }]}>snooze</Text>
-                  </View>
-                </View>
-              )}
-            </View>
           </View>
         </View>
 
         <Animated.View style={[styles.overlay, styles.overlayUp, upOverlayOpacity]} pointerEvents="none">
-          <View style={styles.overlayBadge}>
-            <ArrowUp size={28} color="#000" strokeWidth={3} />
-            <Text style={styles.overlayBadgeText}>START</Text>
+          <View style={styles.overlayBadgeGreen}>
+            <ArrowUp size={36} color="#000" strokeWidth={2.5} />
           </View>
         </Animated.View>
 
         <Animated.View style={[styles.overlay, styles.overlayDown, downOverlayOpacity]} pointerEvents="none">
-          <View style={[styles.overlayBadge, styles.overlayBadgeRed]}>
-            <ArrowDown size={28} color="#fff" strokeWidth={3} />
-            <Text style={[styles.overlayBadgeText, styles.overlayBadgeTextRed]}>SNOOZE</Text>
+          <View style={styles.overlayBadgeRed}>
+            <ArrowDown size={36} color="#fff" strokeWidth={2.5} />
           </View>
         </Animated.View>
-
-        {showCycleControls && (
-          <>
-            <Animated.View style={[styles.overlay, styles.overlaySide, leftOverlayOpacity]} pointerEvents="none">
-              <View style={styles.overlayBadgeSide}>
-                <ChevronLeft size={28} color={colors.info} strokeWidth={2.5} />
-              </View>
-            </Animated.View>
-            <Animated.View style={[styles.overlay, styles.overlaySide, rightOverlayOpacity]} pointerEvents="none">
-              <View style={styles.overlayBadgeSide}>
-                <ChevronRight size={28} color={colors.info} strokeWidth={2.5} />
-              </View>
-            </Animated.View>
-          </>
-        )}
       </Animated.View>
     </GestureDetector>
   );
@@ -345,18 +246,12 @@ const styles = StyleSheet.create({
     padding: 24,
     borderRadius: radii.xxl,
     overflow: 'hidden',
-    gap: 0,
   },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 20,
-  },
-  topBarLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
   },
   iconWrap: {
     width: 32,
@@ -403,9 +298,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: 21,
   },
-  bottomSection: {
-    gap: 16,
-  },
+  bottomSection: {},
   muscleList: {
     gap: 8,
   },
@@ -432,36 +325,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginLeft: 14,
   },
-  swipeHints: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: 14,
-  },
-  hintRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  hintItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  hintText: {
-    fontSize: 11,
-    fontFamily: 'Inter-SemiBold',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  hintDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: colors.textMuted,
-    opacity: 0.4,
-  },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: radii.xxl,
@@ -469,45 +332,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   overlayUp: {
-    backgroundColor: 'rgba(34, 197, 94, 0.92)',
+    backgroundColor: 'rgba(34, 197, 94, 0.9)',
   },
   overlayDown: {
-    backgroundColor: 'rgba(20, 20, 22, 0.94)',
+    backgroundColor: 'rgba(10, 10, 12, 0.92)',
     borderWidth: 2,
     borderColor: colors.danger,
   },
-  overlaySide: {
-    backgroundColor: 'rgba(15, 20, 30, 0.88)',
-    borderWidth: 2,
-    borderColor: colors.info,
-  },
-  overlayBadge: {
-    alignItems: 'center',
-    gap: 8,
+  overlayBadgeGreen: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: '#fff',
-    paddingHorizontal: 28,
-    paddingVertical: 16,
-    borderRadius: radii.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   overlayBadgeRed: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: colors.danger,
-  },
-  overlayBadgeText: {
-    fontSize: 22,
-    fontFamily: 'Inter-ExtraBold',
-    color: '#000',
-    letterSpacing: 4,
-  },
-  overlayBadgeTextRed: {
-    color: '#fff',
-  },
-  overlayBadgeSide: {
-    width: 56,
-    height: 56,
-    borderRadius: radii.lg,
-    backgroundColor: colors.infoMuted,
-    borderWidth: 1,
-    borderColor: colors.info,
     alignItems: 'center',
     justifyContent: 'center',
   },
