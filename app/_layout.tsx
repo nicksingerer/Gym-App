@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { useFonts } from 'expo-font';
@@ -12,11 +12,14 @@ import {
 } from '@expo-google-fonts/inter';
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { setNotificationHandler, addNotificationResponseListener } from '@/services/notifications';
 
 SplashScreen.preventAutoHideAsync();
+setNotificationHandler();
 
 export default function RootLayout() {
   useFrameworkReady();
+  const router = useRouter();
 
   const [fontsLoaded, fontError] = useFonts({
     'Inter-Regular': Inter_400Regular,
@@ -31,6 +34,14 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded, fontError]);
+
+  useEffect(() => {
+    const unsub = addNotificationResponseListener(
+      () => {},
+      () => { router.replace('/'); }
+    );
+    return unsub;
+  }, []);
 
   if (!fontsLoaded && !fontError) {
     return null;

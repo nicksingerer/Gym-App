@@ -16,6 +16,7 @@ import Animated, {
 import { Plus, Square, ChevronRight } from 'lucide-react-native';
 import { colors, radii } from '@/constants/theme';
 import { HistorySet } from '@/types/api';
+import { scheduleTimerNotification, cancelTimerNotification } from '@/services/notifications';
 
 const TOTAL_SECONDS = 180;
 const CIRCLE_SIZE = 220;
@@ -29,7 +30,7 @@ interface TimerScreenProps {
   onFinish: () => void;
 }
 
-export function TimerScreen({ completedSets, onNewSet, onFinish }: TimerScreenProps) {
+export function TimerScreen({ completedSets, onNewSet: onNewSetProp, onFinish: onFinishProp }: TimerScreenProps) {
   const [secondsLeft, setSecondsLeft] = useState(TOTAL_SECONDS);
   const [finished, setFinished] = useState(false);
 
@@ -39,9 +40,18 @@ export function TimerScreen({ completedSets, onNewSet, onFinish }: TimerScreenPr
   const finishedRef = useRef(false);
 
   const pulseScale = useSharedValue(1);
-  const notifSlide = useSharedValue(0);
 
   const isLast10 = secondsLeft <= 10 && secondsLeft > 0 && !finished;
+
+  const onNewSet = useCallback(() => {
+    cancelTimerNotification();
+    onNewSetProp();
+  }, [onNewSetProp]);
+
+  const onFinish = useCallback(() => {
+    cancelTimerNotification();
+    onFinishProp();
+  }, [onFinishProp]);
 
   const triggerHaptic = useCallback(() => {
     if (Platform.OS !== 'web') {
@@ -74,6 +84,7 @@ export function TimerScreen({ completedSets, onNewSet, onFinish }: TimerScreenPr
     startTimeRef.current = Date.now();
     finishedRef.current = false;
     startInterval();
+    scheduleTimerNotification(TOTAL_SECONDS);
 
     const handleAppStateChange = (nextState: AppStateStatus) => {
       if (nextState === 'background' || nextState === 'inactive') {
@@ -89,6 +100,7 @@ export function TimerScreen({ completedSets, onNewSet, onFinish }: TimerScreenPr
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       subscription.remove();
+      cancelTimerNotification();
     };
   }, []);
 
