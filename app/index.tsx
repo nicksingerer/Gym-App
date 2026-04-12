@@ -297,7 +297,6 @@ export default function HomeScreen() {
               />
             ))}
           </View>
-          <Text style={styles.dotHint}>Links/Rechts wischen zum Wechseln</Text>
         </Animated.View>
       )}
 
@@ -447,8 +446,8 @@ const styles = StyleSheet.create({
   dotContainer: {
     alignItems: 'center',
     gap: 8,
-    paddingTop: 16,
-    paddingBottom: Platform.OS === 'web' ? 40 : 52,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'web' ? 32 : 44,
   },
   dotRow: {
     flexDirection: 'row',
@@ -464,11 +463,6 @@ const styles = StyleSheet.create({
   },
   dotInactive: {
     backgroundColor: 'rgba(255,255,255,0.12)',
-  },
-  dotHint: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontFamily: 'Inter-Medium',
   },
   bufferIndicator: {
     position: 'absolute',
