@@ -26,6 +26,7 @@ export const colors = {
 
   info: '#3B82F6',
   infoMuted: 'rgba(59, 130, 246, 0.15)',
+  infoBorder: 'rgba(59, 130, 246, 0.25)',
 
   tabBar: '#0C0D0F',
   tabBarBorder: 'rgba(255,255,255,0.05)',

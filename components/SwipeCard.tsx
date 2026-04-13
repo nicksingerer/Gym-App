@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,18 +12,24 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   withTiming,
+  withSequence,
+  withDelay,
   runOnJS,
   interpolate,
+  interpolateColor,
   Extrapolation,
+  Easing,
 } from 'react-native-reanimated';
 import { Exercise } from '@/types/api';
 import { Zap, Clock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { colors, muscleColors, radii } from '@/constants/theme';
 import { formatDaysSinceLastDone } from '@/utils/formatTime';
+import { triggerHaptic } from '@/utils/haptics';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SWIPE_Y_THRESHOLD = SCREEN_HEIGHT * 0.12;
 const SWIPE_X_THRESHOLD = SCREEN_WIDTH * 0.25;
+const RUBBER_BAND_MAX = 15;
 
 const SNAP_SPRING = {
   damping: 28,
@@ -40,6 +46,9 @@ interface SwipeCardProps {
   showCycleControls: boolean;
   isTop: boolean;
   index: number;
+  topTranslateX?: Animated.SharedValue<number>;
+  topTranslateY?: Animated.SharedValue<number>;
+  showHint?: boolean;
 }
 
 export function SwipeCard({
@@ -51,6 +60,9 @@ export function SwipeCard({
   showCycleControls,
   isTop,
   index,
+  topTranslateX,
+  topTranslateY,
+  showHint,
 }: SwipeCardProps) {
   const scaleForIndex = index === 0 ? 1 : 0.95;
   const translateYForIndex = index === 0 ? 0 : 14;
@@ -62,6 +74,19 @@ export function SwipeCard({
   const stackOffset = useSharedValue(translateYForIndex);
   const cardOpacity = useSharedValue(opacityForIndex);
   const pressed = useSharedValue(1);
+  const hasPassedThreshold = useSharedValue(0);
+
+  useEffect(() => {
+    if (isTop && showHint) {
+      translateY.value = withDelay(
+        600,
+        withSequence(
+          withTiming(-18, { duration: 500, easing: Easing.out(Easing.cubic) }),
+          withSpring(0, { damping: 12, stiffness: 200, mass: 0.6 })
+        )
+      );
+    }
+  }, [showHint, isTop]);
 
   React.useEffect(() => {
     cardScale.value = withSpring(scaleForIndex, SNAP_SPRING);
@@ -74,11 +99,20 @@ export function SwipeCard({
   const handleSwipeLeft = useCallback(() => onSwipeLeft?.(), [onSwipeLeft]);
   const handleSwipeRight = useCallback(() => onSwipeRight?.(), [onSwipeRight]);
 
+  const fireThresholdHaptic = useCallback(() => {
+    triggerHaptic('light');
+  }, []);
+
+  const fireCommitHaptic = useCallback(() => {
+    triggerHaptic('medium');
+  }, []);
+
   const panGesture = Gesture.Pan()
     .enabled(isTop)
     .minDistance(5)
     .onStart(() => {
       pressed.value = withSpring(0.98, { damping: 20, stiffness: 600 });
+      hasPassedThreshold.value = 0;
     })
     .onUpdate((event) => {
       const absX = Math.abs(event.translationX);
@@ -87,9 +121,39 @@ export function SwipeCard({
       if (absY > absX) {
         translateY.value = event.translationY * 0.85;
         translateX.value = 0;
+        if (topTranslateY) topTranslateY.value = translateY.value;
+        if (topTranslateX) topTranslateX.value = 0;
+
+        const pastThreshold =
+          Math.abs(event.translationY * 0.85) >= SWIPE_Y_THRESHOLD ? 1 : 0;
+        if (pastThreshold === 1 && hasPassedThreshold.value === 0) {
+          hasPassedThreshold.value = 1;
+          runOnJS(fireThresholdHaptic)();
+        } else if (pastThreshold === 0 && hasPassedThreshold.value === 1) {
+          hasPassedThreshold.value = 0;
+        }
       } else if (showCycleControls) {
         translateX.value = event.translationX * 0.6;
         translateY.value = 0;
+        if (topTranslateX) topTranslateX.value = translateX.value;
+        if (topTranslateY) topTranslateY.value = 0;
+
+        const pastThreshold =
+          Math.abs(event.translationX * 0.6) >= SWIPE_X_THRESHOLD ? 1 : 0;
+        if (pastThreshold === 1 && hasPassedThreshold.value === 0) {
+          hasPassedThreshold.value = 1;
+          runOnJS(fireThresholdHaptic)();
+        } else if (pastThreshold === 0 && hasPassedThreshold.value === 1) {
+          hasPassedThreshold.value = 0;
+        }
+      } else {
+        const rubberBand =
+          event.translationX *
+          (RUBBER_BAND_MAX / (Math.abs(event.translationX) + RUBBER_BAND_MAX));
+        translateX.value = rubberBand;
+        translateY.value = 0;
+        if (topTranslateX) topTranslateX.value = rubberBand;
+        if (topTranslateY) topTranslateY.value = 0;
       }
     })
     .onEnd((event) => {
@@ -97,48 +161,188 @@ export function SwipeCard({
 
       const absX = Math.abs(event.translationX);
       const absY = Math.abs(event.translationY);
-      const velX = Math.abs(event.velocityX);
       const velY = Math.abs(event.velocityY);
+      const velX = Math.abs(event.velocityX);
+
+      const resetParent = () => {
+        'worklet';
+        if (topTranslateX) topTranslateX.value = withSpring(0, SNAP_SPRING);
+        if (topTranslateY) topTranslateY.value = withSpring(0, SNAP_SPRING);
+      };
 
       if (absY > absX) {
-        if (event.translationY < -SWIPE_Y_THRESHOLD || (event.translationY < -40 && velY > 800)) {
-          translateY.value = withTiming(-SCREEN_HEIGHT, { duration: 250 }, () => {
+        if (
+          event.translationY < -SWIPE_Y_THRESHOLD ||
+          (event.translationY < -40 && velY > 800)
+        ) {
+          const speed = Math.max(velY, 600);
+          const dist = SCREEN_HEIGHT - Math.abs(translateY.value);
+          const duration = Math.min(Math.max((dist / speed) * 1000, 150), 350);
+
+          runOnJS(fireCommitHaptic)();
+          cardScale.value = withTiming(0.85, { duration });
+          translateY.value = withTiming(-SCREEN_HEIGHT, { duration }, () => {
             runOnJS(handleSwipeUp)();
           });
-        } else if (event.translationY > SWIPE_Y_THRESHOLD || (event.translationY > 40 && velY > 800)) {
-          translateY.value = withTiming(SCREEN_HEIGHT, { duration: 250 }, () => {
+          if (topTranslateY) topTranslateY.value = withTiming(-SCREEN_HEIGHT, { duration });
+        } else if (
+          event.translationY > SWIPE_Y_THRESHOLD ||
+          (event.translationY > 40 && velY > 800)
+        ) {
+          const speed = Math.max(velY, 600);
+          const dist = SCREEN_HEIGHT - Math.abs(translateY.value);
+          const duration = Math.min(Math.max((dist / speed) * 1000, 150), 350);
+
+          runOnJS(fireCommitHaptic)();
+          cardScale.value = withTiming(0.85, { duration });
+          translateY.value = withTiming(SCREEN_HEIGHT, { duration }, () => {
             runOnJS(handleSwipeDown)();
           });
+          if (topTranslateY) topTranslateY.value = withTiming(SCREEN_HEIGHT, { duration });
         } else {
           translateY.value = withSpring(0, SNAP_SPRING);
+          resetParent();
         }
       } else if (showCycleControls) {
-        if (event.translationX < -SWIPE_X_THRESHOLD || (event.translationX < -60 && velX > 600)) {
+        if (
+          event.translationX < -SWIPE_X_THRESHOLD ||
+          (event.translationX < -60 && velX > 600)
+        ) {
+          runOnJS(fireCommitHaptic)();
           runOnJS(handleSwipeLeft)();
           translateX.value = withSpring(0, SNAP_SPRING);
-        } else if (event.translationX > SWIPE_X_THRESHOLD || (event.translationX > 60 && velX > 600)) {
+        } else if (
+          event.translationX > SWIPE_X_THRESHOLD ||
+          (event.translationX > 60 && velX > 600)
+        ) {
+          runOnJS(fireCommitHaptic)();
           runOnJS(handleSwipeRight)();
           translateX.value = withSpring(0, SNAP_SPRING);
         } else {
           translateX.value = withSpring(0, SNAP_SPRING);
         }
+        resetParent();
+      } else {
+        translateX.value = withSpring(0, SNAP_SPRING);
+        resetParent();
       }
     });
 
   const animatedCardStyle = useAnimatedStyle(() => {
-    const rotateY = interpolate(
+    const rotateZ = interpolate(
       translateY.value,
       [-SCREEN_HEIGHT * 0.3, 0, SCREEN_HEIGHT * 0.3],
-      [-2, 0, 2],
+      [-6, 0, 6],
       Extrapolation.CLAMP
     );
+
+    const rotateZHoriz = interpolate(
+      translateX.value,
+      [-SCREEN_WIDTH * 0.3, 0, SCREEN_WIDTH * 0.3],
+      [4, 0, -4],
+      Extrapolation.CLAMP
+    );
+
+    const tiltX = interpolate(
+      translateY.value,
+      [-SCREEN_HEIGHT * 0.3, 0, SCREEN_HEIGHT * 0.3],
+      [4, 0, -4],
+      Extrapolation.CLAMP
+    );
+
     return {
       opacity: cardOpacity.value,
       transform: [
+        { perspective: 1200 },
         { translateX: translateX.value },
         { translateY: translateY.value + stackOffset.value },
-        { rotate: `${rotateY}deg` },
+        { rotateZ: `${rotateZ + rotateZHoriz}deg` },
+        { rotateX: `${tiltX}deg` },
         { scale: cardScale.value * pressed.value },
+      ],
+    };
+  });
+
+  const animatedBorderStyle = useAnimatedStyle(() => {
+    const upProgress = interpolate(
+      translateY.value,
+      [-SWIPE_Y_THRESHOLD, 0],
+      [1, 0],
+      Extrapolation.CLAMP
+    );
+    const downProgress = interpolate(
+      translateY.value,
+      [0, SWIPE_Y_THRESHOLD],
+      [0, 1],
+      Extrapolation.CLAMP
+    );
+    const leftProgress = interpolate(
+      translateX.value,
+      [-SWIPE_X_THRESHOLD, 0],
+      [1, 0],
+      Extrapolation.CLAMP
+    );
+    const rightProgress = interpolate(
+      translateX.value,
+      [0, SWIPE_X_THRESHOLD],
+      [0, 1],
+      Extrapolation.CLAMP
+    );
+
+    const maxProgress = Math.max(upProgress, downProgress, leftProgress, rightProgress);
+
+    let borderColor: string;
+    if (upProgress >= downProgress && upProgress >= leftProgress && upProgress >= rightProgress && upProgress > 0) {
+      borderColor = interpolateColor(
+        upProgress,
+        [0, 1],
+        ['rgba(255,255,255,0.06)', 'rgba(34, 197, 94, 0.6)']
+      );
+    } else if (downProgress >= leftProgress && downProgress >= rightProgress && downProgress > 0) {
+      borderColor = interpolateColor(
+        downProgress,
+        [0, 1],
+        ['rgba(255,255,255,0.06)', 'rgba(239, 68, 68, 0.6)']
+      );
+    } else if ((leftProgress >= rightProgress && leftProgress > 0) || rightProgress > 0) {
+      const hProgress = Math.max(leftProgress, rightProgress);
+      borderColor = interpolateColor(
+        hProgress,
+        [0, 1],
+        ['rgba(255,255,255,0.06)', 'rgba(59, 130, 246, 0.6)']
+      );
+    } else {
+      borderColor = 'rgba(255,255,255,0.06)';
+    }
+
+    return {
+      borderColor,
+      borderWidth: interpolate(maxProgress, [0, 1], [1, 1.5], Extrapolation.CLAMP),
+    };
+  });
+
+  const backgroundCardStyle = useAnimatedStyle(() => {
+    if (isTop || !topTranslateY || !topTranslateX) {
+      return {};
+    }
+
+    const dragProgress = interpolate(
+      Math.abs(topTranslateY.value),
+      [0, SWIPE_Y_THRESHOLD * 1.5],
+      [0, 1],
+      Extrapolation.CLAMP
+    );
+
+    const dynamicScale = interpolate(dragProgress, [0, 1], [0.95, 1], Extrapolation.CLAMP);
+    const dynamicOffset = interpolate(dragProgress, [0, 1], [14, 0], Extrapolation.CLAMP);
+    const dynamicOpacity = interpolate(dragProgress, [0, 1], [0.5, 1], Extrapolation.CLAMP);
+
+    return {
+      opacity: dynamicOpacity,
+      transform: [
+        { perspective: 1200 },
+        { translateY: dynamicOffset },
+        { scale: dynamicScale },
       ],
     };
   });
@@ -150,7 +354,13 @@ export function SwipeCard({
       [1, 0],
       Extrapolation.CLAMP
     );
-    return { opacity };
+    const scale = interpolate(
+      translateY.value,
+      [-SWIPE_Y_THRESHOLD, -25],
+      [1, 0.8],
+      Extrapolation.CLAMP
+    );
+    return { opacity, transform: [{ scale }] };
   });
 
   const downOverlayStyle = useAnimatedStyle(() => {
@@ -160,7 +370,13 @@ export function SwipeCard({
       [0, 1],
       Extrapolation.CLAMP
     );
-    return { opacity };
+    const scale = interpolate(
+      translateY.value,
+      [25, SWIPE_Y_THRESHOLD],
+      [0.8, 1],
+      Extrapolation.CLAMP
+    );
+    return { opacity, transform: [{ scale }] };
   });
 
   const leftOverlayStyle = useAnimatedStyle(() => {
@@ -170,7 +386,13 @@ export function SwipeCard({
       [1, 0],
       Extrapolation.CLAMP
     );
-    return { opacity };
+    const scale = interpolate(
+      translateX.value,
+      [-SWIPE_X_THRESHOLD, -40],
+      [1, 0.8],
+      Extrapolation.CLAMP
+    );
+    return { opacity, transform: [{ scale }] };
   });
 
   const rightOverlayStyle = useAnimatedStyle(() => {
@@ -180,7 +402,13 @@ export function SwipeCard({
       [0, 1],
       Extrapolation.CLAMP
     );
-    return { opacity };
+    const scale = interpolate(
+      translateX.value,
+      [40, SWIPE_X_THRESHOLD],
+      [0.8, 1],
+      Extrapolation.CLAMP
+    );
+    return { opacity, transform: [{ scale }] };
   });
 
   const primaryMuscles = exercise.muscles
@@ -192,12 +420,15 @@ export function SwipeCard({
   const allMuscles = [...primaryMuscles, ...secondaryMuscles];
   const lastDoneText = formatDaysSinceLastDone(exercise.daysSinceLastDone ?? null);
 
+  const useBackgroundParallax = !isTop && topTranslateY && topTranslateX;
+
   return (
     <GestureDetector gesture={panGesture}>
       <Animated.View
         style={[
           styles.card,
-          animatedCardStyle,
+          isTop ? animatedCardStyle : (useBackgroundParallax ? backgroundCardStyle : animatedCardStyle),
+          animatedBorderStyle,
           { zIndex: isTop ? 10 : 10 - index },
         ]}
       >

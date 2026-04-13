@@ -13,6 +13,7 @@ import Animated, {
   FadeInUp,
   FadeOutUp,
   FadeOutDown,
+  useSharedValue,
 } from 'react-native-reanimated';
 import { Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -23,6 +24,7 @@ import { SwipeCard } from '@/components/SwipeCard';
 import { ActionToast } from '@/components/ActionToast';
 import { Dumbbell, RefreshCw } from 'lucide-react-native';
 import { colors, radii } from '@/constants/theme';
+import { useSwipeHintFlag } from '@/hooks/useSwipeHintFlag';
 
 const BUFFER_SIZE = 5;
 const VISIBLE_CARDS = 2;
@@ -61,6 +63,11 @@ export default function HomeScreen() {
   const [toast, setToast] = useState<ToastType>(null);
   const isSwiping = useRef(false);
   const [headerKey, setHeaderKey] = useState(0);
+
+  const topTranslateX = useSharedValue(0);
+  const topTranslateY = useSharedValue(0);
+
+  const { showHint, markHintSeen } = useSwipeHintFlag();
 
   const fillBuffer = useCallback(async () => {
     if (bufferLoading || exhausted) return;
@@ -117,6 +124,8 @@ export default function HomeScreen() {
   const removeCard = (key: string) => {
     setCards((prev) => prev.filter((c) => c.key !== key));
     setHeaderKey((k) => k + 1);
+    topTranslateX.value = 0;
+    topTranslateY.value = 0;
   };
 
   const cycleExercise = (direction: 'prev' | 'next') => {
@@ -222,10 +231,13 @@ export default function HomeScreen() {
 
       <View style={styles.cardContainer}>
         {visibleCards.map((card, index) => {
+          const isTopCard = index === 0;
+
           const handleSwipeUp = () => {
             if (isSwiping.current) return;
             isSwiping.current = true;
 
+            if (showHint) markHintSeen();
             removeCard(card.key);
             showToast('started', card.exercise.name);
             router.push(`/exercise/${card.exercise.id}`);
@@ -236,6 +248,7 @@ export default function HomeScreen() {
             if (isSwiping.current) return;
             isSwiping.current = true;
 
+            if (showHint) markHintSeen();
             removeCard(card.key);
             showToast('snoozed', card.clusterName);
 
@@ -249,10 +262,12 @@ export default function HomeScreen() {
           };
 
           const handleSwipeLeft = () => {
+            if (showHint) markHintSeen();
             cycleExercise('prev');
           };
 
           const handleSwipeRight = () => {
+            if (showHint) markHintSeen();
             cycleExercise('next');
           };
 
@@ -265,8 +280,11 @@ export default function HomeScreen() {
               onSwipeLeft={handleSwipeLeft}
               onSwipeRight={handleSwipeRight}
               showCycleControls={card.clusterSize > 1}
-              isTop={index === 0}
+              isTop={isTopCard}
               index={index}
+              topTranslateX={topTranslateX}
+              topTranslateY={topTranslateY}
+              showHint={isTopCard && showHint}
             />
           );
         })}
