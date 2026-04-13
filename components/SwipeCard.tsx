@@ -49,6 +49,8 @@ interface SwipeCardProps {
   topTranslateX?: Animated.SharedValue<number>;
   topTranslateY?: Animated.SharedValue<number>;
   showHint?: boolean;
+  enterFrom?: 'left' | 'right' | null;
+  onEntranceDone?: () => void;
 }
 
 export function SwipeCard({
@@ -63,21 +65,35 @@ export function SwipeCard({
   topTranslateX,
   topTranslateY,
   showHint,
+  enterFrom,
+  onEntranceDone,
 }: SwipeCardProps) {
   const scaleForIndex = index === 0 ? 1 : 0.95;
   const translateYForIndex = index === 0 ? 0 : 14;
   const opacityForIndex = index === 0 ? 1 : 0.5;
 
-  const translateX = useSharedValue(0);
+  const entranceStart = enterFrom === 'left' ? -SCREEN_WIDTH * 1.2 : enterFrom === 'right' ? SCREEN_WIDTH * 1.2 : 0;
+  const translateX = useSharedValue(entranceStart);
   const translateY = useSharedValue(0);
   const cardScale = useSharedValue(scaleForIndex);
   const stackOffset = useSharedValue(translateYForIndex);
   const cardOpacity = useSharedValue(opacityForIndex);
   const pressed = useSharedValue(1);
   const hasPassedThreshold = useSharedValue(0);
+  const isAnimatingOut = useSharedValue(false);
+
+  const handleEntranceDone = useCallback(() => onEntranceDone?.(), [onEntranceDone]);
 
   useEffect(() => {
-    if (isTop && showHint) {
+    if (enterFrom && isTop) {
+      translateX.value = withSpring(0, { damping: 22, stiffness: 280, mass: 0.5 }, () => {
+        runOnJS(handleEntranceDone)();
+      });
+    }
+  }, [enterFrom, isTop]);
+
+  useEffect(() => {
+    if (isTop && showHint && !enterFrom) {
       translateY.value = withDelay(
         600,
         withSequence(
@@ -86,7 +102,7 @@ export function SwipeCard({
         )
       );
     }
-  }, [showHint, isTop]);
+  }, [showHint, isTop, enterFrom]);
 
   React.useEffect(() => {
     cardScale.value = withSpring(scaleForIndex, SNAP_SPRING);
@@ -208,16 +224,30 @@ export function SwipeCard({
           event.translationX < -SWIPE_X_THRESHOLD ||
           (event.translationX < -60 && velX > 600)
         ) {
+          isAnimatingOut.value = true;
+          const speed = Math.max(velX, 800);
+          const dist = SCREEN_WIDTH * 1.2 - Math.abs(translateX.value);
+          const duration = Math.min(Math.max((dist / speed) * 1000, 120), 280);
+
           runOnJS(fireCommitHaptic)();
-          runOnJS(handleSwipeLeft)();
-          translateX.value = withSpring(0, SNAP_SPRING);
+          cardScale.value = withTiming(0.92, { duration });
+          translateX.value = withTiming(-SCREEN_WIDTH * 1.2, { duration }, () => {
+            runOnJS(handleSwipeLeft)();
+          });
         } else if (
           event.translationX > SWIPE_X_THRESHOLD ||
           (event.translationX > 60 && velX > 600)
         ) {
+          isAnimatingOut.value = true;
+          const speed = Math.max(velX, 800);
+          const dist = SCREEN_WIDTH * 1.2 - Math.abs(translateX.value);
+          const duration = Math.min(Math.max((dist / speed) * 1000, 120), 280);
+
           runOnJS(fireCommitHaptic)();
-          runOnJS(handleSwipeRight)();
-          translateX.value = withSpring(0, SNAP_SPRING);
+          cardScale.value = withTiming(0.92, { duration });
+          translateX.value = withTiming(SCREEN_WIDTH * 1.2, { duration }, () => {
+            runOnJS(handleSwipeRight)();
+          });
         } else {
           translateX.value = withSpring(0, SNAP_SPRING);
         }

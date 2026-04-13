@@ -63,6 +63,8 @@ export default function HomeScreen() {
   const [toast, setToast] = useState<ToastType>(null);
   const isSwiping = useRef(false);
   const [headerKey, setHeaderKey] = useState(0);
+  const [cycleEnterFrom, setCycleEnterFrom] = useState<'left' | 'right' | null>(null);
+  const [cycleKey, setCycleKey] = useState(0);
 
   const topTranslateX = useSharedValue(0);
   const topTranslateY = useSharedValue(0);
@@ -129,6 +131,10 @@ export default function HomeScreen() {
   };
 
   const cycleExercise = (direction: 'prev' | 'next') => {
+    const enterDir = direction === 'next' ? 'right' : 'left';
+    setCycleEnterFrom(enterDir);
+    setCycleKey((k) => k + 1);
+
     setCards((prev) =>
       prev.map((card, idx) => {
         if (idx !== 0) return card;
@@ -149,6 +155,10 @@ export default function HomeScreen() {
       })
     );
   };
+
+  const handleEntranceDone = useCallback(() => {
+    setCycleEnterFrom(null);
+  }, []);
 
   if (loading) {
     return (
@@ -271,9 +281,11 @@ export default function HomeScreen() {
             cycleExercise('next');
           };
 
+          const cardKey = isTopCard ? `${card.key}-c${cycleKey}` : card.key;
+
           return (
             <SwipeCard
-              key={card.key}
+              key={cardKey}
               exercise={card.exercise}
               onSwipeUp={handleSwipeUp}
               onSwipeDown={handleSwipeDown}
@@ -285,6 +297,8 @@ export default function HomeScreen() {
               topTranslateX={topTranslateX}
               topTranslateY={topTranslateY}
               showHint={isTopCard && showHint}
+              enterFrom={isTopCard ? cycleEnterFrom : null}
+              onEntranceDone={isTopCard ? handleEntranceDone : undefined}
             />
           );
         })}
