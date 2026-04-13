@@ -21,7 +21,7 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { Exercise } from '@/types/api';
-import { Zap, Clock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { Zap, Clock, ChevronUp, ChevronDown } from 'lucide-react-native';
 import { colors, muscleColors, radii } from '@/constants/theme';
 import { formatDaysSinceLastDone } from '@/utils/formatTime';
 import { triggerHaptic } from '@/utils/haptics';
@@ -39,6 +39,7 @@ const SNAP_SPRING = {
 
 interface SwipeCardProps {
   exercise: Exercise;
+  clusterName?: string;
   onSwipeUp: () => void;
   onSwipeDown: () => void;
   onSwipeLeft?: () => void;
@@ -55,6 +56,7 @@ interface SwipeCardProps {
 
 export function SwipeCard({
   exercise,
+  clusterName,
   onSwipeUp,
   onSwipeDown,
   onSwipeLeft,
@@ -306,40 +308,21 @@ export function SwipeCard({
       [0, 1],
       Extrapolation.CLAMP
     );
-    const leftProgress = interpolate(
-      translateX.value,
-      [-SWIPE_X_THRESHOLD, 0],
-      [1, 0],
-      Extrapolation.CLAMP
-    );
-    const rightProgress = interpolate(
-      translateX.value,
-      [0, SWIPE_X_THRESHOLD],
-      [0, 1],
-      Extrapolation.CLAMP
-    );
 
-    const maxProgress = Math.max(upProgress, downProgress, leftProgress, rightProgress);
+    const maxProgress = Math.max(upProgress, downProgress);
 
     let borderColor: string;
-    if (upProgress >= downProgress && upProgress >= leftProgress && upProgress >= rightProgress && upProgress > 0) {
+    if (upProgress >= downProgress && upProgress > 0) {
       borderColor = interpolateColor(
         upProgress,
         [0, 1],
         ['rgba(255,255,255,0.06)', 'rgba(34, 197, 94, 0.6)']
       );
-    } else if (downProgress >= leftProgress && downProgress >= rightProgress && downProgress > 0) {
+    } else if (downProgress > 0) {
       borderColor = interpolateColor(
         downProgress,
         [0, 1],
         ['rgba(255,255,255,0.06)', 'rgba(239, 68, 68, 0.6)']
-      );
-    } else if ((leftProgress >= rightProgress && leftProgress > 0) || rightProgress > 0) {
-      const hProgress = Math.max(leftProgress, rightProgress);
-      borderColor = interpolateColor(
-        hProgress,
-        [0, 1],
-        ['rgba(255,255,255,0.06)', 'rgba(59, 130, 246, 0.6)']
       );
     } else {
       borderColor = 'rgba(255,255,255,0.06)';
@@ -409,38 +392,6 @@ export function SwipeCard({
     return { opacity, transform: [{ scale }] };
   });
 
-  const leftOverlayStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(
-      translateX.value,
-      [-SWIPE_X_THRESHOLD, -40],
-      [1, 0],
-      Extrapolation.CLAMP
-    );
-    const scale = interpolate(
-      translateX.value,
-      [-SWIPE_X_THRESHOLD, -40],
-      [1, 0.8],
-      Extrapolation.CLAMP
-    );
-    return { opacity, transform: [{ scale }] };
-  });
-
-  const rightOverlayStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(
-      translateX.value,
-      [40, SWIPE_X_THRESHOLD],
-      [0, 1],
-      Extrapolation.CLAMP
-    );
-    const scale = interpolate(
-      translateX.value,
-      [40, SWIPE_X_THRESHOLD],
-      [0.8, 1],
-      Extrapolation.CLAMP
-    );
-    return { opacity, transform: [{ scale }] };
-  });
-
   const primaryMuscles = exercise.muscles
     .filter((m) => m.impact >= 0.7)
     .map((m) => m.muscle.name);
@@ -463,14 +414,19 @@ export function SwipeCard({
         ]}
       >
         <View style={styles.cardInner}>
-          {lastDoneText && (
-            <View style={styles.topRow}>
+          <View style={styles.topRow}>
+            {clusterName ? (
+              <View style={styles.categoryTag}>
+                <Text style={styles.categoryTagText}>{clusterName}</Text>
+              </View>
+            ) : <View />}
+            {lastDoneText ? (
               <View style={styles.lastDoneRow}>
                 <Clock size={12} color={colors.textTertiary} />
                 <Text style={styles.lastDoneText}>{lastDoneText}</Text>
               </View>
-            </View>
-          )}
+            ) : <View />}
+          </View>
 
           <View style={styles.centerSection}>
             <Text style={styles.exerciseName} numberOfLines={3}>
@@ -529,27 +485,6 @@ export function SwipeCard({
           </View>
         </Animated.View>
 
-        {showCycleControls && (
-          <>
-            <Animated.View
-              style={[styles.overlay, styles.overlayLeft, leftOverlayStyle]}
-              pointerEvents="none"
-            >
-              <View style={styles.overlayContent}>
-                <ChevronLeft size={44} color="#FFF" strokeWidth={1.5} />
-              </View>
-            </Animated.View>
-
-            <Animated.View
-              style={[styles.overlay, styles.overlayRight, rightOverlayStyle]}
-              pointerEvents="none"
-            >
-              <View style={styles.overlayContent}>
-                <ChevronRight size={44} color="#FFF" strokeWidth={1.5} />
-              </View>
-            </Animated.View>
-          </>
-        )}
       </Animated.View>
     </GestureDetector>
   );
@@ -588,7 +523,20 @@ const styles = StyleSheet.create({
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
+  },
+  categoryTag: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.sm,
+  },
+  categoryTagText: {
+    fontSize: 11,
+    fontFamily: 'Inter-SemiBold',
+    color: colors.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   lastDoneRow: {
     flexDirection: 'row',
@@ -661,12 +609,6 @@ const styles = StyleSheet.create({
   },
   overlayDown: {
     backgroundColor: 'rgba(239, 68, 68, 0.92)',
-  },
-  overlayLeft: {
-    backgroundColor: 'rgba(59, 130, 246, 0.92)',
-  },
-  overlayRight: {
-    backgroundColor: 'rgba(59, 130, 246, 0.92)',
   },
   overlayContent: {
     alignItems: 'center',

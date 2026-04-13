@@ -9,9 +9,7 @@ import {
 import Animated, {
   FadeIn,
   FadeOut,
-  SlideInDown,
   FadeInUp,
-  FadeOutUp,
   FadeOutDown,
   useSharedValue,
 } from 'react-native-reanimated';
@@ -62,7 +60,6 @@ export default function HomeScreen() {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastType>(null);
   const isSwiping = useRef(false);
-  const [headerKey, setHeaderKey] = useState(0);
   const [cycleEnterFrom, setCycleEnterFrom] = useState<'left' | 'right' | null>(null);
   const [cycleKey, setCycleKey] = useState(0);
 
@@ -125,7 +122,6 @@ export default function HomeScreen() {
 
   const removeCard = (key: string) => {
     setCards((prev) => prev.filter((c) => c.key !== key));
-    setHeaderKey((k) => k + 1);
     topTranslateX.value = 0;
     topTranslateY.value = 0;
   };
@@ -221,24 +217,6 @@ export default function HomeScreen() {
         <Text style={styles.headerTitle}>Training</Text>
       </View>
 
-      {topCard && (
-        <Animated.View
-          key={`header-${topCard.key}-${headerKey}`}
-          entering={SlideInDown.duration(300).springify().damping(20).stiffness(200)}
-          exiting={FadeOutUp.duration(150)}
-          style={styles.clusterHeader}
-        >
-          <Text style={styles.clusterName}>{topCard.clusterName}</Text>
-          {topCard.clusterSize > 1 && (
-            <View style={styles.clusterCount}>
-              <Text style={styles.clusterCountText}>
-                {topCard.clusterIndex + 1}/{topCard.clusterSize}
-              </Text>
-            </View>
-          )}
-        </Animated.View>
-      )}
-
       <View style={styles.cardContainer}>
         {visibleCards.map((card, index) => {
           const isTopCard = index === 0;
@@ -287,6 +265,7 @@ export default function HomeScreen() {
             <SwipeCard
               key={cardKey}
               exercise={card.exercise}
+              clusterName={card.clusterName}
               onSwipeUp={handleSwipeUp}
               onSwipeDown={handleSwipeDown}
               onSwipeLeft={handleSwipeLeft}
@@ -329,7 +308,6 @@ export default function HomeScreen() {
               />
             ))}
           </View>
-          <Text style={styles.dotHint}>Links/Rechts wischen zum Wechseln</Text>
         </Animated.View>
       )}
 
@@ -353,31 +331,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-ExtraBold',
     color: colors.text,
     letterSpacing: -0.5,
-  },
-  clusterHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 24,
-    paddingBottom: 14,
-  },
-  clusterName: {
-    fontSize: 13,
-    fontFamily: 'Inter-SemiBold',
-    color: colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
-  },
-  clusterCount: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.sm,
-  },
-  clusterCountText: {
-    fontSize: 11,
-    fontFamily: 'Inter-Bold',
-    color: colors.textTertiary,
   },
   centerContainer: {
     flex: 1,
@@ -478,7 +431,6 @@ const styles = StyleSheet.create({
   },
   dotContainer: {
     alignItems: 'center',
-    gap: 8,
     paddingTop: 16,
     paddingBottom: Platform.OS === 'web' ? 40 : 52,
   },
@@ -496,11 +448,6 @@ const styles = StyleSheet.create({
   },
   dotInactive: {
     backgroundColor: 'rgba(255,255,255,0.12)',
-  },
-  dotHint: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontFamily: 'Inter-Medium',
   },
   bufferIndicator: {
     position: 'absolute',
