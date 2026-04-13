@@ -127,7 +127,7 @@ export default function HomeScreen() {
   };
 
   const cycleExercise = (direction: 'prev' | 'next') => {
-    const enterDir = direction === 'next' ? 'right' : 'left';
+    const enterDir = direction === 'next' ? 'left' : 'right';
     setCycleEnterFrom(enterDir);
     setCycleKey((k) => k + 1);
 
